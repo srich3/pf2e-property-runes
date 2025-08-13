@@ -1,0 +1,54 @@
+{
+  "PF2E-PROPERTY-RUNES": {
+    "MODULE_NAME": "PF2E Property Runes",
+    "MODULE_DESCRIPTION": "Automates property rune effects for Pathfinder 2E weapons and armor",
+    
+    "DREAD_RUNE": {
+      "NAME": "Dread Rune",
+      "DESCRIPTION": "Eerie symbols cover your armor, inspiring terror in your foes. Frightened enemies within 30 feet that can see you must attempt a DC 20 Will save at the end of their turn; on a failure, the value of their frightened condition doesn't decrease below 1 that turn.",
+      "EFFECT_TRIGGERED": "{actor} is within range of Dread Rune armor and must attempt a Will save!",
+      "SAVE_FAILED": "{actor} failed the Will save! Their frightened condition cannot decrease below 1 this turn.",
+      "SAVE_SUCCESS": "{actor} succeeded on the Will save and is not affected by the Dread Rune.",
+      "PREVENT_DECREASE_EFFECT": "Dread Rune - Prevent Frightened Decrease",
+      "PREVENT_DECREASE_DESCRIPTION": "The Dread Rune prevents your frightened condition from decreasing below 1 this turn.",
+      "WITHIN_RANGE": "Within Dread Rune Range",
+      "OUT_OF_RANGE": "Out of Dread Rune Range"
+    },
+    
+    "CHAT": {
+      "EFFECT_HEADER": "Dread Rune Effect",
+      "WILL_SAVE_REQUIRED": "Will Save Required",
+      "SAVE_RESULT": "Save Result"
+    },
+    
+    "SETTINGS": {
+      "ENABLE_DREAD_RUNE": "Enable Dread Rune Automation",
+      "ENABLE_DREAD_RUNE_HINT": "Automatically trigger Dread Rune effects when frightened enemies end their turn within range",
+      "DREAD_RUNE_DC": "Dread Rune Save DC",
+      "DREAD_RUNE_DC_HINT": "The Will save DC for the Dread Rune effect",
+      "DREAD_RUNE_RANGE": "Dread Rune Range (feet)",
+      "DREAD_RUNE_RANGE_HINT": "The range in feet for the Dread Rune effect",
+      "SHOW_CHAT_MESSAGES": "Show Chat Messages",
+      "SHOW_CHAT_MESSAGES_HINT": "Display chat messages when Dread Rune effects are triggered",
+      "AUTO_ROLL_SAVES": "Auto-roll Saves",
+      "AUTO_ROLL_SAVES_HINT": "Automatically roll Will saves for affected creatures"
+    },
+    
+    "ERRORS": {
+      "NO_ACTIVE_SCENE": "No active scene found",
+      "NO_VALID_TOKENS": "No valid tokens found for distance calculation",
+      "SAVE_ROLL_FAILED": "Failed to roll Will save",
+      "EFFECT_APPLICATION_FAILED": "Failed to apply Dread Rune effect"
+    },
+    
+    "DEBUG": {
+      "MODULE_LOADED": "PF2E Property Runes: Dread Rune automation loaded",
+      "CHECKING_ACTOR": "Checking actor {actor} for Dread Rune effects",
+      "ACTOR_AFFECTED": "Actor {actor} is affected by Dread Rune",
+      "ACTOR_NOT_AFFECTED": "Actor {actor} is not affected by Dread Rune",
+      "DISTANCE_CALCULATED": "Distance between {actor1} and {actor2}: {distance} feet",
+      "DREAD_RUNE_DETECTED": "Dread Rune detected on {actor}",
+      "NO_DREAD_RUNE": "No Dread Rune found on {actor}"
+    }
+  }
+}

@@ -1,0 +1,129 @@
+/* PF2E Property Runes - Dread Rune Styling */
+
+.dread-rune-effect {
+    background: linear-gradient(135deg, #2c1810 0%, #4a2c1a 100%);
+    border: 2px solid #8b4513;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.dread-rune-effect::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #ff6b35, #f7931e, #ff6b35);
+    animation: dread-rune-glow 2s ease-in-out infinite;
+}
+
+.dread-rune-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #f7931e;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.dread-rune-header img {
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dread-rune-effect p {
+    color: #e8d5c4;
+    margin: 0;
+    line-height: 1.4;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.dread-rune-effect strong {
+    color: #f7931e;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+/* Animation for the glowing effect */
+@keyframes dread-rune-glow {
+    0%, 100% {
+        opacity: 0.7;
+        box-shadow: 0 0 5px #ff6b35;
+    }
+    50% {
+        opacity: 1;
+        box-shadow: 0 0 15px #ff6b35, 0 0 25px #f7931e;
+    }
+}
+
+/* Token icon styling for Dread Rune effects */
+.dread-rune-token-icon {
+    position: relative;
+    display: inline-block;
+}
+
+.dread-rune-token-icon::after {
+    content: '☠️';
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    font-size: 12px;
+    background: rgba(139, 69, 19, 0.9);
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #f7931e;
+}
+
+/* Combat tracker styling for affected tokens */
+.combatant.dread-rune-affected {
+    background: linear-gradient(90deg, rgba(139, 69, 19, 0.2), rgba(247, 147, 30, 0.1));
+    border-left: 3px solid #f7931e;
+}
+
+.combatant.dread-rune-affected .combatant-name {
+    color: #f7931e;
+    font-weight: bold;
+}
+
+/* Tooltip styling for Dread Rune information */
+.dread-rune-tooltip {
+    background: rgba(44, 24, 16, 0.95);
+    border: 1px solid #8b4513;
+    border-radius: 6px;
+    padding: 8px;
+    color: #e8d5c4;
+    font-size: 0.9em;
+    max-width: 300px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.dread-rune-tooltip strong {
+    color: #f7931e;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 768px) {
+    .dread-rune-effect {
+        padding: 8px;
+        margin: 4px 0;
+    }
+    
+    .dread-rune-header {
+        font-size: 1em;
+        gap: 6px;
+    }
+    
+    .dread-rune-header img {
+        width: 16px;
+        height: 16px;
+    }
+}
