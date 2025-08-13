@@ -11,7 +11,7 @@
   "version": "1.0.0",
   "compatibility": {
     "minimum": "11",
-    "verified": "11"
+    "verified": "13"
   },
   "esmodules": [
     "scripts/dread-rune.js"
@@ -28,7 +28,7 @@
   ],
   "system": ["pf2e"],
   "url": "https://github.com/srich3/pf2e-property-runes",
-  "manifest": "https://github.com/srich3/pf2e-property-runes/releases/latest/download/module.json",
+  "manifest": "https://raw.githubusercontent.com/srich3/pf2e-property-runes/main/module.json",
   "download": "https://github.com/srich3/pf2e-property-runes/releases/latest/download/pf2e-property-runes.zip",
   "license": "LICENSE"
 }
