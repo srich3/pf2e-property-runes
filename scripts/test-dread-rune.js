@@ -16,8 +16,8 @@ class DreadRuneTester {
         // Add a test button to the chat
         Hooks.on("renderChatLog", this.addTestButton.bind(this));
         
-        // Add test commands
-        this.registerTestCommands();
+        // Note: Removed keyboard binding as it's not available in FoundryVTT v13
+        console.log("🧪 Dread Rune Tester initialized. Use the test button to run tests.");
     }
 
     /**
@@ -43,18 +43,6 @@ class DreadRuneTester {
         
         testButton.click(() => this.runAllTests());
         html.find('.chat-controls').append(testButton);
-    }
-
-    /**
-     * Register test commands
-     */
-    registerTestCommands() {
-        // Test command: /test-dread-rune
-        game.keyboard.bind("KeyT", () => {
-            if (game.keyboard.isModifierActive("Control")) {
-                this.runAllTests();
-            }
-        });
     }
 
     /**
@@ -114,7 +102,7 @@ class DreadRuneTester {
         try {
             const scene = game.scenes.active;
             if (!scene) {
-                this.addTestResult(testName, false, "No active scene");
+                this.addTestResult(testName, false, "No active scene found");
                 return;
             }
 
@@ -280,5 +268,4 @@ class DreadRuneTester {
 // Initialize tester when ready
 Hooks.on("ready", () => {
     new DreadRuneTester();
-    console.log("🧪 Dread Rune Tester initialized. Use Ctrl+T or click the test button to run tests.");
 });

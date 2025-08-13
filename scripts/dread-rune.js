@@ -10,31 +10,65 @@ class DreadRuneAutomation {
         this.DREAD_RUNE_NAME = "Dread Rune";
         this.DREAD_RUNE_EFFECT = "dread-rune-effect";
         
+        // Define specific rune IDs for proper detection
+        this.DREAD_RUNE_IDS = {
+            "lesser-dread-rune": {
+                id: "lesser-dread-rune",
+                name: "Lesser Dread Rune",
+                dc: 20,
+                range: 30
+            },
+            "greater-dread-rune": {
+                id: "greater-dread-rune", 
+                name: "Greater Dread Rune",
+                dc: 25,
+                range: 40
+            }
+        };
+        
         this.initializeHooks();
         this.initializeSettings();
+        
+        // Force console log to verify module is loading
+        console.log("PF2E Property Runes: DreadRuneAutomation constructor called");
     }
 
     /**
      * Initialize FoundryVTT hooks for the module
      */
     initializeHooks() {
+        console.log("PF2E Property Runes: Initializing hooks");
+        
         // Hook into the end of turn to check for Dread Rune effects
         Hooks.on("pf2e.endTurn", this.onEndTurn.bind(this));
+        console.log("PF2E Property Runes: pf2e.endTurn hook registered");
         
         // Hook into combat tracker updates to track turn changes
         Hooks.on("updateCombat", this.onCombatUpdate.bind(this));
+        console.log("PF2E Property Runes: updateCombat hook registered");
         
         // Hook into actor updates to detect when Dread Rune is added/removed
         Hooks.on("updateActor", this.onActorUpdate.bind(this));
+        console.log("PF2E Property Runes: updateActor hook registered");
         
         // Module initialization
         Hooks.on("ready", this.onReady.bind(this));
+        console.log("PF2E Property Runes: ready hook registered");
+        
+        // Add additional hooks for better debugging
+        Hooks.on("createCombatant", this.onCombatantCreated.bind(this));
+        console.log("PF2E Property Runes: createCombatant hook registered");
+        
+        Hooks.on("deleteCombatant", this.onCombatantDeleted.bind(this));
+        console.log("PF2E Property Runes: deleteCombatant hook registered");
     }
 
     /**
      * Initialize module settings
      */
     initializeSettings() {
+        console.log("PF2E Property Runes: Initializing settings");
+        
         // Register module settings
         game.settings.register("pf2e-property-runes", "enable-dread-rune", {
             name: "Enable Dread Rune Automation",
@@ -106,11 +140,13 @@ class DreadRuneAutomation {
             scope: "world",
             config: true,
             type: Boolean,
-            default: false,
+            default: true, // Changed to true by default for debugging
             onChange: (value) => {
                 this.log(`Debug mode ${value ? 'enabled' : 'disabled'}`);
             }
         });
+        
+        console.log("PF2E Property Runes: Settings registered");
     }
 
     /**
@@ -127,6 +163,7 @@ class DreadRuneAutomation {
      * Called when the module is ready
      */
     onReady() {
+        console.log("PF2E Property Runes: onReady hook fired");
         this.log("Module initialization started");
         
         // Load settings
@@ -145,6 +182,23 @@ class DreadRuneAutomation {
         if (game.settings.get("pf2e-property-runes", "show-chat-messages")) {
             this.showWelcomeMessage();
         }
+        
+        // Test rune detection
+        this.testRuneDetection();
+    }
+
+    /**
+     * Test rune detection on all actors
+     */
+    testRuneDetection() {
+        console.log("PF2E Property Runes: Testing rune detection on all actors");
+        
+        const allActors = game.actors.filter(a => a.type === "character" || a.type === "npc");
+        console.log(`Found ${allActors.length} actors to check`);
+        
+        for (const actor of allActors) {
+            this.checkDreadRuneEquipment(actor);
+        }
     }
 
     /**
@@ -159,6 +213,7 @@ class DreadRuneAutomation {
                     <strong>PF2E Property Runes Module Loaded</strong>
                 </div>
                 <p>Dread Rune automation is now active! Check the module settings to configure options.</p>
+                <p><strong>Debug Mode:</strong> ${game.settings.get("pf2e-property-runes", "debug-mode") ? 'ON' : 'OFF'}</p>
             </div>`,
             type: CONST.CHAT_MESSAGE_TYPES.OTHER
         });
@@ -200,6 +255,8 @@ class DreadRuneAutomation {
      * Called when a turn ends in combat
      */
     async onEndTurn(combat, combatant) {
+        console.log("PF2E Property Runes: onEndTurn hook fired", { combat, combatant });
+        
         if (!combat || !combatant || !combatant.actor) {
             this.log("End turn hook: Invalid combat or combatant", { combat, combatant });
             return;
@@ -246,6 +303,20 @@ class DreadRuneAutomation {
             this.log("Actor traits changed, checking Dread Rune equipment");
             this.checkDreadRuneEquipment(actor);
         }
+    }
+
+    /**
+     * Called when a combatant is created
+     */
+    onCombatantCreated(combatant, options, userId) {
+        this.log(`Combatant created: ${combatant.actor?.name || 'Unknown'}`, { combatant, options, userId });
+    }
+
+    /**
+     * Called when a combatant is deleted
+     */
+    onCombatantDeleted(combatant, options, userId) {
+        this.log(`Combatant deleted: ${combatant.actor?.name || 'Unknown'}`, { combatant, options, userId });
     }
 
     /**
@@ -327,17 +398,52 @@ class DreadRuneAutomation {
      * Check if an actor has Dread Rune armor equipped
      */
     hasDreadRuneArmor(actor) {
+        this.log(`Checking ${actor.name} for Dread Rune armor`);
+        
         // Check equipped armor for Dread Rune
         const equippedArmor = actor.itemTypes.armor.find(armor => 
-            armor.isEquipped && 
-            armor.system.runes?.property?.includes("dread")
+            armor.isEquipped
         );
         
-        if (equippedArmor) {
-            this.log(`${actor.name} has Dread Rune armor: ${equippedArmor.name}`);
+        if (!equippedArmor) {
+            this.log(`${actor.name} has no equipped armor`);
+            return false;
         }
         
-        return !!equippedArmor;
+        this.log(`${actor.name} has equipped armor: ${equippedArmor.name}`);
+        this.log(`Armor system data:`, equippedArmor.system);
+        
+        // Check for property runes
+        if (equippedArmor.system.runes?.property) {
+            this.log(`Property runes found:`, equippedArmor.system.runes.property);
+            
+            // Check for specific Dread Rune IDs
+            for (const runeId of equippedArmor.system.runes.property) {
+                if (this.DREAD_RUNE_IDS[runeId]) {
+                    const runeData = this.DREAD_RUNE_IDS[runeId];
+                    this.log(`Found ${runeData.name} (${runeId}) on ${equippedArmor.name}`);
+                    
+                    // Update DC and range based on the specific rune
+                    this.DREAD_RUNE_DC = runeData.dc;
+                    this.DREAD_RUNE_DISTANCE = runeData.range;
+                    
+                    return true;
+                }
+            }
+        }
+        
+        // Fallback: Check for legacy text-based detection
+        if (equippedArmor.system.runes?.property) {
+            for (const rune of equippedArmor.system.runes.property) {
+                if (typeof rune === 'string' && rune.toLowerCase().includes('dread')) {
+                    this.log(`Found Dread Rune (legacy detection): ${rune}`);
+                    return true;
+                }
+            }
+        }
+        
+        this.log(`${actor.name} does not have Dread Rune armor`);
+        return false;
     }
 
     /**
@@ -533,5 +639,6 @@ class DreadRuneAutomation {
 
 // Initialize the module when FoundryVTT is ready
 Hooks.on("ready", () => {
+    console.log("PF2E Property Runes: ready hook fired, creating DreadRuneAutomation instance");
     new DreadRuneAutomation();
 });
