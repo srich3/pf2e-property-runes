@@ -1,6 +1,10 @@
 /**
  * PF2E Property Runes - Dread Rune Automation
  * Automates the Dread Rune effect on armor for Pathfinder 2E
+ * 
+ * IMPORTANT: When multiple Dread Runes are within range of a frightened creature,
+ * the creature saves against the HIGHEST DC among all available runes.
+ * Only one save is triggered per frightened creature per turn.
  */
 
 class DreadRuneAutomation {
@@ -10,64 +14,83 @@ class DreadRuneAutomation {
         this.DREAD_RUNE_NAME = "Dread Rune";
         this.DREAD_RUNE_EFFECT = "dread-rune-effect";
         
-        // Define specific rune IDs for proper detection
-        this.DREAD_RUNE_IDS = {
-            "lesser-dread-rune": {
-                id: "lesser-dread-rune",
+        // Define specific rune types for proper detection
+        this.DREAD_RUNE_TYPES = {
+            "lesser": {
                 name: "Lesser Dread Rune",
                 dc: 20,
-                range: 30
+                range: 30,
+                minFrightened: 1
             },
-            "greater-dread-rune": {
-                id: "greater-dread-rune", 
+            "moderate": {
+                name: "Moderate Dread Rune", 
+                dc: 29,
+                range: 30,
+                minFrightened: 2
+            },
+            "greater": {
                 name: "Greater Dread Rune",
-                dc: 25,
-                range: 40
+                dc: 38,
+                range: 30,
+                minFrightened: null // No decrease at any level
             }
         };
+        
+        // Define traits that indicate ally/enemy status
+        this.ALLY_TRAITS = [
+            "ally", "friendly", "helpful", "beneficial", "construct", "companion",
+            "familiar", "pet", "mount", "steed", "guardian", "protector"
+        ];
+        
+        this.ENEMY_TRAITS = [
+            "enemy", "hostile", "harmful", "dangerous", "evil", "chaotic",
+            "aggressive", "violent", "destructive"
+        ];
         
         this.initializeHooks();
         this.initializeSettings();
         
-        // Force console log to verify module is loading
-        console.log("PF2E Property Runes: DreadRuneAutomation constructor called");
+        // Log to verify module is loading (only shows in debug mode)
+        this.log("DreadRuneAutomation constructor called");
     }
 
     /**
      * Initialize FoundryVTT hooks for the module
      */
     initializeHooks() {
-        console.log("PF2E Property Runes: Initializing hooks");
+
         
         // Hook into the end of turn to check for Dread Rune effects
         Hooks.on("pf2e.endTurn", this.onEndTurn.bind(this));
-        console.log("PF2E Property Runes: pf2e.endTurn hook registered");
+
         
         // Hook into combat tracker updates to track turn changes
         Hooks.on("updateCombat", this.onCombatUpdate.bind(this));
-        console.log("PF2E Property Runes: updateCombat hook registered");
+
         
         // Hook into actor updates to detect when Dread Rune is added/removed
         Hooks.on("updateActor", this.onActorUpdate.bind(this));
-        console.log("PF2E Property Runes: updateActor hook registered");
+
         
         // Module initialization
         Hooks.on("ready", this.onReady.bind(this));
-        console.log("PF2E Property Runes: ready hook registered");
+
         
         // Add additional hooks for better debugging
         Hooks.on("createCombatant", this.onCombatantCreated.bind(this));
-        console.log("PF2E Property Runes: createCombatant hook registered");
+
         
         Hooks.on("deleteCombatant", this.onCombatantDeleted.bind(this));
-        console.log("PF2E Property Runes: deleteCombatant hook registered");
+
+        
+
     }
 
     /**
      * Initialize module settings
      */
     initializeSettings() {
-        console.log("PF2E Property Runes: Initializing settings");
+        this.log("Initializing settings");
         
         // Register module settings
         game.settings.register("pf2e-property-runes", "enable-dread-rune", {
@@ -82,33 +105,8 @@ class DreadRuneAutomation {
             }
         });
 
-        game.settings.register("pf2e-property-runes", "dread-rune-dc", {
-            name: "Dread Rune Save DC",
-            hint: "The Will save DC for the Dread Rune effect",
-            scope: "world",
-            config: true,
-            type: Number,
-            default: 20,
-            range: { min: 10, max: 50, step: 1 },
-            onChange: (value) => {
-                this.DREAD_RUNE_DC = value;
-                this.log(`Dread Rune DC updated to ${value}`);
-            }
-        });
-
-        game.settings.register("pf2e-property-runes", "dread-rune-range", {
-            name: "Dread Rune Range (feet)",
-            hint: "The range in feet for the Dread Rune effect",
-            scope: "world",
-            config: true,
-            type: Number,
-            default: 30,
-            range: { min: 10, max: 100, step: 5 },
-            onChange: (value) => {
-                this.DREAD_RUNE_DISTANCE = value;
-                this.log(`Dread Rune range updated to ${value} feet`);
-            }
-        });
+        // Note: DC and range are now dynamically determined from each character's specific rune type
+        // The DC is properly owned by the character with the rune, not affected by the frightened creature's condition
 
         game.settings.register("pf2e-property-runes", "show-chat-messages", {
             name: "Show Chat Messages",
@@ -122,17 +120,7 @@ class DreadRuneAutomation {
             }
         });
 
-        game.settings.register("pf2e-property-runes", "auto-roll-saves", {
-            name: "Auto-roll Saves",
-            hint: "Automatically roll Will saves for affected creatures",
-            scope: "world",
-            config: true,
-            type: Boolean,
-            default: true,
-            onChange: (value) => {
-                this.log(`Auto-roll saves ${value ? 'enabled' : 'disabled'}`);
-            }
-        });
+
 
         game.settings.register("pf2e-property-runes", "debug-mode", {
             name: "Debug Mode",
@@ -145,16 +133,21 @@ class DreadRuneAutomation {
                 this.log(`Debug mode ${value ? 'enabled' : 'disabled'}`);
             }
         });
-        
-        console.log("PF2E Property Runes: Settings registered");
+
+
     }
 
     /**
      * Log messages with debug mode support
      */
     log(message, data = null) {
-        const debugMode = game.settings.get("pf2e-property-runes", "debug-mode");
-        if (debugMode) {
+        try {
+            const debugMode = game.settings.get("pf2e-property-runes", "debug-mode");
+            if (debugMode) {
+                console.log(`[PF2E Property Runes] ${message}`, data);
+            }
+        } catch (error) {
+            // Settings not registered yet, just use console.log
             console.log(`[PF2E Property Runes] ${message}`, data);
         }
     }
@@ -163,20 +156,7 @@ class DreadRuneAutomation {
      * Called when the module is ready
      */
     onReady() {
-        console.log("PF2E Property Runes: onReady hook fired");
-        this.log("Module initialization started");
-        
-        // Load settings
-        this.DREAD_RUNE_DC = game.settings.get("pf2e-property-runes", "dread-rune-dc");
-        this.DREAD_RUNE_DISTANCE = game.settings.get("pf2e-property-runes", "dread-rune-range");
-        
-        this.log("Settings loaded", {
-            dc: this.DREAD_RUNE_DC,
-            range: this.DREAD_RUNE_DISTANCE
-        });
-        
         this.setupDreadRuneEffect();
-        this.log("Dread Rune automation loaded successfully");
         
         // Display welcome message
         if (game.settings.get("pf2e-property-runes", "show-chat-messages")) {
@@ -185,16 +165,168 @@ class DreadRuneAutomation {
         
         // Test rune detection
         this.testRuneDetection();
+        
+        // Add global debug functions for testing
+        window.debugDreadRuneFrightened = (actorId) => {
+            const actor = game.actors.get(actorId);
+            if (actor) {
+                this.debugFrightenedCondition(actor);
+            } else {
+                console.error(`Actor with ID ${actorId} not found`);
+            }
+        };
+        
+        window.debugDreadRuneAllyCheck = (actorId) => {
+            const actor = game.actors.get(actorId);
+            if (actor) {
+                this.log(`=== DEBUGGING ALLY CHECK FOR ${actor.name} ===`);
+                const isAlly = this.isActorAnAlly(actor);
+                this.log(`Final result: ${actor.name} is ${isAlly ? 'an ALLY' : 'an ENEMY'}`);
+                this.log(`This means Dread Rune will ${isAlly ? 'NOT affect' : 'affect'} ${actor.name}`);
+            } else {
+                console.error(`Actor with ID ${actorId} not found`);
+            }
+        };
+        
+        window.debugDreadRuneAlliance = (actorId1, actorId2) => {
+            const actor1 = game.actors.get(actorId1);
+            const actor2 = game.actors.get(actorId2);
+            if (actor1 && actor2) {
+                this.log(`=== DEBUGGING ALLIANCE BETWEEN ${actor1.name} AND ${actor2.name} ===`);
+                const alliance1 = this.getActorAlliance(actor1);
+                const alliance2 = this.getActorAlliance(actor2);
+                const isEnemy = this.isActorEnemyOf(actor1, actor2);
+                this.log(`${actor1.name} alliance: ${alliance1}`);
+                this.log(`${actor2.name} alliance: ${alliance2}`);
+                this.log(`Final result: ${actor1.name} and ${actor2.name} are ${isEnemy ? 'ENEMIES' : 'ALLIES'}`);
+                this.log(`This means Dread Rune will ${isEnemy ? 'affect' : 'NOT affect'} ${actor1.name} if they are frightened`);
+            } else {
+                console.error(`One or both actors not found`);
+            }
+        };
+        
+        window.debugDreadRuneRequirements = (actorId) => {
+            const actor = game.actors.get(actorId);
+            if (actor) {
+                this.log(`=== DEBUGGING DREAD RUNE REQUIREMENTS FOR ${actor.name} ===`);
+                
+                // Check if they have frightened condition
+                const frightenedCondition = this.findFrightenedCondition(actor);
+                if (!frightenedCondition) {
+                    this.log(`❌ ${actor.name} does not have frightened condition`);
+                    return;
+                }
+                
+                const frightenedValue = frightenedCondition.value || 1;
+                this.log(`✅ ${actor.name} has frightened ${frightenedValue}`);
+                
+                // Check if they meet rune requirements
+                const meetsRequirements = this.doesFrightenedLevelMeetRuneRequirements(actor, frightenedValue);
+                this.log(`Final result: ${actor.name} frightened ${frightenedValue} ${meetsRequirements ? 'MEETS' : 'does NOT meet'} Dread Rune requirements`);
+                
+                if (meetsRequirements) {
+                    this.log(`This means Dread Rune WILL trigger for ${actor.name}`);
+                } else {
+                    this.log(`This means Dread Rune will NOT trigger for ${actor.name} (frightened level too low)`);
+                }
+            } else {
+                console.error(`Actor with ID ${actorId} not found`);
+            }
+        };
+        
+        window.debugActorWillSave = (actorId) => {
+            const actor = game.actors.get(actorId);
+            if (actor) {
+                this.log(`=== DEBUGGING WILL SAVE DATA FOR ${actor.name} ===`);
+                
+                // Log the actor's system structure
+                this.log(`Actor system keys: ${Object.keys(actor.system || {}).join(', ')}`);
+                
+                if (actor.system?.saves) {
+                    this.log(`Saves keys: ${Object.keys(actor.system.saves).join(', ')}`);
+                    
+                    if (actor.system.saves.will) {
+                        this.log(`Will save data:`, actor.system.saves.will);
+                        this.log(`Will save keys: ${Object.keys(actor.system.saves.will).join(', ')}`);
+                        
+                        // Check specific properties
+                        if (actor.system.saves.will.value !== undefined) {
+                            this.log(`Will save value: ${actor.system.saves.will.value}`);
+                        }
+                        if (actor.system.saves.will.mod !== undefined) {
+                            this.log(`Will save mod: ${actor.system.saves.will.mod}`);
+                        }
+                        if (actor.system.saves.will.total !== undefined) {
+                            this.log(`Will save total: ${actor.system.saves.will.total}`);
+                        }
+                        if (actor.system.saves.will.rank !== undefined) {
+                            this.log(`Will save rank: ${actor.system.saves.will.rank}`);
+                        }
+                    } else {
+                        this.log(`No will save data found`);
+                    }
+                } else {
+                    this.log(`No saves data found`);
+                }
+                
+                // Also check for alternative save structures
+                if (actor.system?.attributes?.saves) {
+                    this.log(`Alternative saves location found in attributes.saves`);
+                    this.log(`Attributes saves keys: ${Object.keys(actor.system.attributes.saves).join(', ')}`);
+                    
+                    if (actor.system.attributes.saves.will) {
+                        this.log(`Will save in attributes:`, actor.system.attributes.saves.will);
+                    }
+                }
+                
+            } else {
+                console.error(`Actor with ID ${actorId} not found`);
+            }
+        };
+        
+        window.debugDreadRuneHighestDC = (frightenedActorId) => {
+            const actor = game.actors.get(frightenedActorId);
+            if (actor) {
+                this.log(`=== DEBUGGING HIGHEST DC DREAD RUNE FOR ${actor.name} ===`);
+                
+                // Get all affecting actors
+                const allAffecting = this.getAllDreadRuneActorsAffecting(actor);
+                this.log(`Total Dread Rune actors affecting ${actor.name}: ${allAffecting.length}`);
+                
+                for (const affectingActor of allAffecting) {
+                    const runeData = this.getDreadRuneData(affectingActor);
+                    const distance = this.getDistanceBetween(actor, affectingActor);
+                    this.log(`${affectingActor.name}: ${runeData.name} (DC ${runeData.dc}) at ${distance.toFixed(1)} feet`);
+                }
+                
+                // Get the highest DC actor
+                const highestDCActor = this.getDreadRuneActorAffecting(actor);
+                if (highestDCActor) {
+                    const runeData = this.getDreadRuneData(highestDCActor);
+                    this.log(`🎯 Highest DC actor: ${highestDCActor.name} with ${runeData.name} (DC ${runeData.dc})`);
+                } else {
+                    this.log(`❌ No Dread Rune actor affecting ${actor.name}`);
+                }
+                
+            } else {
+                console.error(`Actor with ID ${frightenedActorId} not found`);
+            }
+        };
+        
+        this.log("Global debug functions available:");
+        this.log("  - debugDreadRuneFrightened(actorId) - debug frightened condition detection");
+        this.log("  - debugDreadRuneAllyCheck(actorId) - debug ally/enemy detection");
+        this.log("  - debugDreadRuneAlliance(actorId1, actorId2) - debug alliance between two actors");
+        this.log("  - debugDreadRuneRequirements(actorId) - debug frightened level requirements");
+        this.log("  - debugActorWillSave(actorId) - debug actor's Will save data structure");
+        this.log("  - debugDreadRuneHighestDC(actorId) - debug highest DC Dread Rune detection");
     }
 
     /**
      * Test rune detection on all actors
      */
     testRuneDetection() {
-        console.log("PF2E Property Runes: Testing rune detection on all actors");
-        
         const allActors = game.actors.filter(a => a.type === "character" || a.type === "npc");
-        console.log(`Found ${allActors.length} actors to check`);
         
         for (const actor of allActors) {
             this.checkDreadRuneEquipment(actor);
@@ -209,13 +341,13 @@ class DreadRuneAutomation {
             user: game.user.id,
             content: `<div class="dread-rune-effect">
                 <div class="dread-rune-header">
-                    <img src="icons/magic/symbols/runes-star-4-pentagon.webp" width="20" height="20">
+                    <img src="systems/pf2e/icons/equipment/runes/armor-property-runes/armor-property-runes.webp" width="20" height="20">
                     <strong>PF2E Property Runes Module Loaded</strong>
                 </div>
                 <p>Dread Rune automation is now active! Check the module settings to configure options.</p>
                 <p><strong>Debug Mode:</strong> ${game.settings.get("pf2e-property-runes", "debug-mode") ? 'ON' : 'OFF'}</p>
             </div>`,
-            type: CONST.CHAT_MESSAGE_TYPES.OTHER
+            style: CONST.CHAT_MESSAGE_STYLES.OTHER
         });
     }
 
@@ -223,15 +355,13 @@ class DreadRuneAutomation {
      * Set up the Dread Rune effect in the system
      */
     setupDreadRuneEffect() {
-        this.log("Setting up Dread Rune effect");
-        
         // Register the Dread Rune effect if it doesn't exist
         if (!game.pf2e.effects.registered.has(this.DREAD_RUNE_EFFECT)) {
             const dreadRuneEffect = {
                 id: this.DREAD_RUNE_EFFECT,
                 name: this.DREAD_RUNE_NAME,
-                description: "Eerie symbols cover your armor, inspiring terror in your foes. Frightened enemies within 30 feet that can see you must attempt a DC 20 Will save at the end of their turn; on a failure, the value of their frightened condition doesn't decrease below 1 that turn.",
-                img: "icons/magic/symbols/runes-star-4-pentagon.webp",
+                description: "Eerie symbols cover your armor, inspiring terror in your foes. Frightened enemies within 30 feet that can see you must attempt a Will save at the end of their turn; on a failure, the value of their frightened condition doesn't decrease below the minimum for your rune type (Lesser: 1, Moderate: 2, Greater: no decrease).",
+                img: "systems/pf2e/icons/equipment/runes/armor-property-runes/armor-property-runes.webp",
                 system: {
                     rules: [],
                     tokenIcon: {
@@ -245,38 +375,27 @@ class DreadRuneAutomation {
             
             // Add to the effects registry
             game.pf2e.effects.registered.set(this.DREAD_RUNE_EFFECT, dreadRuneEffect);
-            this.log("Dread Rune effect registered successfully");
-        } else {
-            this.log("Dread Rune effect already registered");
         }
     }
 
     /**
      * Called when a turn ends in combat
      */
-    async onEndTurn(combat, combatant) {
-        console.log("PF2E Property Runes: onEndTurn hook fired", { combat, combatant });
-        
+    async onEndTurn(combatant, combat) {
         if (!combat || !combatant || !combatant.actor) {
-            this.log("End turn hook: Invalid combat or combatant", { combat, combatant });
             return;
         }
         
         const actor = combatant.actor;
-        this.log(`End turn hook triggered for ${actor.name}`, { actorId: actor.id, actorType: actor.type });
         
         // Check if automation is enabled
         if (!game.settings.get("pf2e-property-runes", "enable-dread-rune")) {
-            this.log("Dread Rune automation is disabled in settings");
             return;
         }
         
         // Check if this actor should be affected by Dread Rune
         if (this.shouldCheckDreadRune(actor)) {
-            this.log(`${actor.name} meets Dread Rune conditions, processing effect`);
             await this.processDreadRuneEffect(actor);
-        } else {
-            this.log(`${actor.name} does not meet Dread Rune conditions`);
         }
     }
 
@@ -284,23 +403,15 @@ class DreadRuneAutomation {
      * Called when combat updates
      */
     onCombatUpdate(combat, change, options, userId) {
-        this.log("Combat update hook triggered", { change, options, userId });
-        
         // This hook helps us track when turns change
-        if (change.round !== undefined || change.turn !== undefined) {
-            this.log("Combat round or turn changed", { round: change.round, turn: change.turn });
-        }
     }
 
     /**
      * Called when an actor is updated
      */
     onActorUpdate(actor, change, options, userId) {
-        this.log(`Actor update hook triggered for ${actor.name}`, { change, options, userId });
-        
         // Check if Dread Rune effects were added or removed
         if (change.system?.traits?.value) {
-            this.log("Actor traits changed, checking Dread Rune equipment");
             this.checkDreadRuneEquipment(actor);
         }
     }
@@ -309,45 +420,326 @@ class DreadRuneAutomation {
      * Called when a combatant is created
      */
     onCombatantCreated(combatant, options, userId) {
-        this.log(`Combatant created: ${combatant.actor?.name || 'Unknown'}`, { combatant, options, userId });
+        // Hook for future use
     }
 
     /**
      * Called when a combatant is deleted
      */
     onCombatantDeleted(combatant, options, userId) {
-        this.log(`Combatant deleted: ${combatant.actor?.name || 'Unknown'}`, { combatant, options, userId });
+        // Hook for future use
+    }
+
+    /**
+     * Find the frightened condition on an actor using multiple detection methods
+     */
+    findFrightenedCondition(actor) {
+        // Method 1: Check system.conditions (this is where PF2E stores conditions)
+        if (actor.system?.conditions) {
+            const found = actor.system.conditions.find(condition => 
+                condition.slug === "frightened"
+            );
+            if (found) {
+                return found;
+            }
+        }
+        
+        // Method 2: Check if conditions is a Map (some PF2E versions use Map)
+        if (actor.system?.conditions instanceof Map) {
+            for (const [id, condition] of actor.system.conditions) {
+                if (condition.slug === "frightened") {
+                    return condition;
+                }
+            }
+        }
+        
+        // Method 3: Check if conditions is a Collection (some PF2E versions use Collection)
+        if (actor.system?.conditions instanceof Collection) {
+            for (const [id, condition] of actor.system.conditions) {
+                if (condition.slug === "frightened") {
+                    return condition;
+                }
+            }
+        }
+        
+        // Method 4: Check if conditions is an object with keys (PF2E v13+ structure)
+        if (actor.system?.conditions && typeof actor.system.conditions === 'object' && !Array.isArray(actor.system.conditions)) {
+            for (const key of Object.keys(actor.system.conditions)) {
+                const condition = actor.system.conditions[key];
+                if (condition && condition.slug === "frightened") {
+                    return condition;
+                }
+            }
+        }
+        
+        // Method 5: Check effects for frightened condition (fallback)
+        if (actor.effects) {
+            for (const effect of actor.effects) {
+                if (effect.slug === "frightened") {
+                    return effect;
+                }
+            }
+        }
+        
+        // Method 6: Check for frightened in actor traits (some versions store it there)
+        if (actor.system?.traits?.value) {
+            const traits = actor.system.traits.value;
+            if (traits.includes("frightened")) {
+                // Create a mock condition object
+                return { slug: "frightened", value: 1, name: "Frightened" };
+            }
+        }
+        
+        // Method 7: Check for frightened in active effects (PF2E v13+)
+        if (actor.effects && actor.effects.size > 0) {
+            for (const effect of actor.effects) {
+                if (effect.slug === "frightened" || effect.name.toLowerCase().includes("frightened")) {
+                    return { slug: "frightened", value: effect.system?.value?.value || 1, name: effect.name };
+                }
+            }
+        }
+        
+        // Method 8: Check for frightened in actor's current state (PF2E v13+)
+        if (actor.system?.details?.conditions) {
+            const detailsConditions = actor.system.details.conditions;
+            if (detailsConditions.frightened) {
+                return { slug: "frightened", value: detailsConditions.frightened.value || 1, name: "Frightened" };
+            }
+        }
+        
+        // Method 9: Check various possible locations for conditions
+        const possibleLocations = [
+            'conditions',
+            'details',
+            'attributes',
+            'traits',
+            'modifiers'
+        ];
+        
+        for (const location of possibleLocations) {
+            if (actor.system[location]) {
+                // If it's an object, look for frightened
+                if (typeof actor.system[location] === 'object') {
+                    const keys = Object.keys(actor.system[location]);
+                    
+                    if (keys.includes('frightened')) {
+                        const condition = actor.system[location].frightened;
+                        return { 
+                            slug: "frightened", 
+                            value: condition.value || condition.level || 1, 
+                            name: condition.name || "Frightened" 
+                        };
+                    }
+                }
+            }
+        }
+        
+        // Method 10: Check for frightened in AC modifiers (PF2E v13+ specific)
+        if (actor.system?.attributes?.ac?.modifiers) {
+            for (const modifier of actor.system.attributes.ac.modifiers) {
+                if (modifier.slug === "frightened") {
+                    // Extract the frightened value from the modifier label (e.g., "Frightened 1" -> value 1)
+                    const frightenedMatch = modifier.label.match(/Frightened\s+(\d+)/);
+                    const frightenedValue = frightenedMatch ? parseInt(frightenedMatch[1]) : 1;
+                    return {
+                        slug: "frightened",
+                        value: frightenedValue,
+                        name: "Frightened"
+                    };
+                }
+            }
+        }
+        
+        // Method 11: Check for frightened in all attribute modifiers
+        if (actor.system?.attributes) {
+            for (const [attrName, attrData] of Object.entries(actor.system.attributes)) {
+                if (attrData?.modifiers && Array.isArray(attrData.modifiers)) {
+                    for (const modifier of attrData.modifiers) {
+                        if (modifier.slug === "frightened") {
+                            const frightenedMatch = modifier.label.match(/Frightened\s+(\d+)/);
+                            const frightenedValue = frightenedMatch ? parseInt(frightenedMatch[1]) : 1;
+                            return {
+                                slug: "frightened",
+                                value: frightenedValue,
+                                name: "Frightened"
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        
+        return null;
     }
 
     /**
      * Check if an actor should be affected by Dread Rune
      */
     shouldCheckDreadRune(actor) {
-        this.log(`Checking if ${actor.name} should be affected by Dread Rune`);
+        // Must be an enemy (different alliance than the character with the rune)
+        // Find the character with Dread Rune armor who would affect this actor
+        const dreadRuneActor = this.getDreadRuneActorAffecting(actor);
+        if (!dreadRuneActor) {
+            return false;
+        }
         
-        // Must be an enemy (not a PC or familiar)
-        if (actor.type !== "npc" && actor.type !== "character") {
-            this.log(`${actor.name} is not an enemy type (${actor.type})`);
+        // Check if the frightened actor has a different alliance than the character with the rune
+        const isEnemy = this.isActorEnemyOf(actor, dreadRuneActor);
+        if (!isEnemy) {
             return false;
         }
         
         // Must have the frightened condition
-        const frightenedEffect = actor.itemTypes.effect.find(effect => 
-            effect.slug === "frightened"
-        );
+        // Use the comprehensive condition detection method
+        const frightenedCondition = this.findFrightenedCondition(actor);
         
-        if (!frightenedEffect) {
-            this.log(`${actor.name} does not have frightened condition`);
+        if (!frightenedCondition) {
             return false;
         }
         
-        this.log(`${actor.name} has frightened condition with value ${frightenedEffect.system.value.value}`);
+        const frightenedValue = frightenedCondition.value || 1;
+        
+        // Check if the frightened level meets the minimum requirement for the Dread Rune type
+        const meetsRuneRequirements = this.doesFrightenedLevelMeetRuneRequirements(actor, frightenedValue);
+        if (!meetsRuneRequirements) {
+            return false;
+        }
         
         // Must be within range of someone with Dread Rune armor
         const withinRange = this.isWithinDreadRuneRange(actor);
-        this.log(`${actor.name} within Dread Rune range: ${withinRange}`);
         
         return withinRange;
+    }
+
+    /**
+     * Check if the frightened level meets the requirements for the Dread Rune type
+     */
+    doesFrightenedLevelMeetRuneRequirements(frightenedActor, frightenedValue) {
+        // Find the character with Dread Rune armor who would affect this actor
+        const dreadRuneActor = this.getDreadRuneActorAffecting(frightenedActor);
+        if (!dreadRuneActor) {
+            return false;
+        }
+        
+        // Get the rune data for the character's armor
+        const runeData = this.getDreadRuneData(dreadRuneActor);
+        if (!runeData) {
+            return false;
+        }
+        
+        // Check the frightened level requirements based on rune type
+        if (runeData.minFrightened === null) {
+            // Greater Dread Rune: activates at any frightened level
+            return true;
+        } else {
+            // Lesser/Moderate Dread Rune: only activates at or above the minimum frightened level
+            return frightenedValue >= runeData.minFrightened;
+        }
+    }
+
+    /**
+     * Check if an actor is an enemy of another actor based on alliance
+     */
+    isActorEnemyOf(actor1, actor2) {
+        // Get the alliance of both actors
+        const alliance1 = this.getActorAlliance(actor1);
+        const alliance2 = this.getActorAlliance(actor2);
+        
+        // If alliances are different, they are enemies
+        if (alliance1 !== alliance2) {
+            this.log(`✅ ${actor1.name} and ${actor2.name} have different alliances - they are enemies`);
+            return true;
+        } else {
+            this.log(`❌ ${actor1.name} and ${actor2.name} have the same alliance - they are allies`);
+            return false;
+        }
+    }
+
+    /**
+     * Get the alliance of an actor
+     */
+    getActorAlliance(actor) {
+        // Check actor type and traits to determine alliance
+        if (actor.type === "character") {
+            // Player characters are always in the "party" alliance
+            return "party";
+        } else if (actor.type === "npc") {
+            // NPCs can be allies or enemies based on traits
+            if (this.isActorAnAlly(actor)) {
+                return "party";
+            } else {
+                return "enemy";
+            }
+        } else {
+            // Unknown actor type, default to enemy
+            return "enemy";
+        }
+    }
+
+    /**
+     * Check if an actor is an ally (should not be affected by Dread Rune)
+     */
+    isActorAnAlly(actor) {
+        // Check if the actor has any ally traits
+        if (actor.system?.traits?.value) {
+            const actorTraits = actor.system.traits.value.map(t => t.toLowerCase());
+            
+            // Check for ally traits first (these override other considerations)
+            for (const trait of actorTraits) {
+                if (this.ALLY_TRAITS.includes(trait)) {
+                    return true;
+                }
+            }
+            
+            // Check for enemy traits (these override other considerations)
+            for (const trait of actorTraits) {
+                if (this.ENEMY_TRAITS.includes(trait)) {
+                    return false;
+                }
+            }
+        }
+        
+        // Method 1: Check if the actor has the "construct" trait and is likely a companion
+        if (actor.system?.traits?.value && actor.system.traits.value.includes("construct")) {
+            // Check if it's likely a companion construct (like a construct companion)
+            if (actor.name.toLowerCase().includes("companion") || 
+                actor.name.toLowerCase().includes("construct") ||
+                actor.name.toLowerCase().includes("golem")) {
+                return true;
+            }
+        }
+        
+        // Method 2: Check if the actor has a name that suggests it's an ally
+        const allyNameIndicators = [
+            "companion", "ally", "friend", "helper", "assistant", "familiar", 
+            "pet", "mount", "steed", "guardian", "protector", "escort"
+        ];
+        
+        const actorNameLower = actor.name.toLowerCase();
+        for (const indicator of allyNameIndicators) {
+            if (actorNameLower.includes(indicator)) {
+                return true;
+            }
+        }
+        
+        // Method 3: Check alignment-based heuristics (only if no other traits are found)
+        if (actor.system?.traits?.value) {
+            const actorTraits = actor.system.traits.value.map(t => t.toLowerCase());
+            
+            // Good and lawful alignments are more likely to be allies
+            if (actorTraits.includes("good") || actorTraits.includes("lawful")) {
+                return true;
+            }
+            
+            // Evil and chaotic alignments are more likely to be enemies
+            if (actorTraits.includes("evil") || actorTraits.includes("chaotic")) {
+                return false;
+            }
+        }
+        
+        // Default: If we can't determine, assume it's an enemy (safer for Dread Rune)
+        // This means the rune will trigger, which is the intended behavior for unknown NPCs
+        return false;
     }
 
     /**
@@ -356,25 +748,30 @@ class DreadRuneAutomation {
     isWithinDreadRuneRange(actor) {
         const scene = game.scenes.active;
         if (!scene) {
-            this.log("No active scene found");
             return false;
         }
 
         // Get all actors with Dread Rune armor in the scene
         const dreadRuneActors = this.getDreadRuneActors(scene);
-        this.log(`Found ${dreadRuneActors.length} actors with Dread Rune armor`);
+        
+        if (dreadRuneActors.length === 0) {
+            return false;
+        }
         
         for (const dreadRuneActor of dreadRuneActors) {
             const distance = this.getDistanceBetween(actor, dreadRuneActor);
-            this.log(`Distance between ${actor.name} and ${dreadRuneActor.name}: ${distance.toFixed(1)} feet`);
             
-            if (distance <= this.DREAD_RUNE_DISTANCE) {
-                this.log(`${actor.name} is within range of ${dreadRuneActor.name}'s Dread Rune armor`);
+            // Get the specific rune data for this actor's armor to check range
+            const runeData = this.getDreadRuneData(dreadRuneActor);
+            if (!runeData) {
+                continue;
+            }
+            
+            if (distance <= runeData.range) {
                 return true;
             }
         }
         
-        this.log(`${actor.name} is not within range of any Dread Rune armor`);
         return false;
     }
 
@@ -387,7 +784,6 @@ class DreadRuneAutomation {
         for (const token of scene.tokens) {
             if (token.actor && this.hasDreadRuneArmor(token.actor)) {
                 dreadRuneActors.push(token.actor);
-                this.log(`Found Dread Rune armor on ${token.actor.name}`);
             }
         }
         
@@ -398,35 +794,27 @@ class DreadRuneAutomation {
      * Check if an actor has Dread Rune armor equipped
      */
     hasDreadRuneArmor(actor) {
-        this.log(`Checking ${actor.name} for Dread Rune armor`);
-        
         // Check equipped armor for Dread Rune
         const equippedArmor = actor.itemTypes.armor.find(armor => 
             armor.isEquipped
         );
         
         if (!equippedArmor) {
-            this.log(`${actor.name} has no equipped armor`);
             return false;
         }
         
-        this.log(`${actor.name} has equipped armor: ${equippedArmor.name}`);
-        this.log(`Armor system data:`, equippedArmor.system);
-        
         // Check for property runes
         if (equippedArmor.system.runes?.property) {
-            this.log(`Property runes found:`, equippedArmor.system.runes.property);
-            
-            // Check for specific Dread Rune IDs
-            for (const runeId of equippedArmor.system.runes.property) {
-                if (this.DREAD_RUNE_IDS[runeId]) {
-                    const runeData = this.DREAD_RUNE_IDS[runeId];
-                    this.log(`Found ${runeData.name} (${runeId}) on ${equippedArmor.name}`);
-                    
-                    // Update DC and range based on the specific rune
-                    this.DREAD_RUNE_DC = runeData.dc;
-                    this.DREAD_RUNE_DISTANCE = runeData.range;
-                    
+            for (const rune of equippedArmor.system.runes.property) {
+                // Handle both string and object rune formats
+                let runeName = '';
+                if (typeof rune === 'string') {
+                    runeName = rune;
+                } else if (rune && typeof rune === 'object') {
+                    runeName = rune.name || rune.slug || '';
+                }
+                
+                if (runeName.toLowerCase().includes('dread')) {
                     return true;
                 }
             }
@@ -436,13 +824,11 @@ class DreadRuneAutomation {
         if (equippedArmor.system.runes?.property) {
             for (const rune of equippedArmor.system.runes.property) {
                 if (typeof rune === 'string' && rune.toLowerCase().includes('dread')) {
-                    this.log(`Found Dread Rune (legacy detection): ${rune}`);
                     return true;
                 }
             }
         }
         
-        this.log(`${actor.name} does not have Dread Rune armor`);
         return false;
     }
 
@@ -472,8 +858,6 @@ class DreadRuneAutomation {
         const gridSize = scene.grid.size;
         const distanceInFeet = (distance / gridSize) * 5;
         
-        this.log(`Grid distance: ${distance.toFixed(2)}, Grid size: ${gridSize}, Distance in feet: ${distanceInFeet.toFixed(1)}`);
-        
         return distanceInFeet;
     }
 
@@ -481,164 +865,305 @@ class DreadRuneAutomation {
      * Process the Dread Rune effect for a frightened enemy
      */
     async processDreadRuneEffect(actor) {
-        this.log(`Processing Dread Rune effect for ${actor.name}`);
-        
         try {
+            // Find the character with Dread Rune armor who is affecting this actor (highest DC)
+            const dreadRuneActor = this.getDreadRuneActorAffecting(actor);
+            if (!dreadRuneActor) {
+                return;
+            }
+            
+            // Get the rune data for the chat message
+            const runeData = this.getDreadRuneData(dreadRuneActor);
+            if (!runeData) {
+                return;
+            }
+            
+            // Get the frightened condition for the chat message
+            const frightenedCondition = this.findFrightenedCondition(actor);
+            if (!frightenedCondition) {
+                return;
+            }
+            
+            // Get all Dread Rune actors affecting this creature to show in the message
+            const allAffectingActors = this.getAllDreadRuneActorsAffecting(actor);
+            let affectingActorsText = "";
+            
+            if (allAffectingActors.length > 1) {
+                const actorNames = allAffectingActors.map(a => a.name).join(", ");
+                affectingActorsText = `<p><em>Multiple Dread Runes detected: ${actorNames}</em></p>`;
+            }
+            
+            // Create a chat message to announce the effect
             if (game.settings.get("pf2e-property-runes", "show-chat-messages")) {
-                // Create a chat message to announce the effect
                 const message = await ChatMessage.create({
                     user: game.user.id,
-                    speaker: ChatMessage.getSpeaker({ actor }),
+                    // No speaker - this ensures the DC is not affected by any actor's conditions
                     content: `<div class="dread-rune-effect">
                         <div class="dread-rune-header">
-                            <img src="icons/magic/symbols/runes-star-4-pentagon.webp" width="20" height="20">
-                            <strong>${this.DREAD_RUNE_NAME} Effect</strong>
+                            <img src="systems/pf2e/icons/equipment/runes/armor-property-runes/armor-property-runes.webp" width="20" height="20">
+                            <strong>${runeData.name} Effect</strong>
                         </div>
-                        <p><strong>${actor.name}</strong> is within range of Dread Rune armor and must attempt a Will save!</p>
+                        ${affectingActorsText}
+                        <p><strong>${actor.name}</strong> must attempt a Will save against the highest DC: @Check[will|dc:${runeData.dc}|name:Dread Rune|traits:fear|showDC:all]{Will Save}</p>
                     </div>`,
-                    type: CONST.CHAT_MESSAGE_TYPES.OTHER
+                    style: CONST.CHAT_MESSAGE_STYLES.OTHER
                 });
-                this.log("Chat message created for Dread Rune effect");
-            }
-
-            // Force a Will save if auto-roll is enabled
-            if (game.settings.get("pf2e-property-runes", "auto-roll-saves")) {
-                this.log("Auto-roll enabled, forcing Will save");
-                await this.forceWillSave(actor);
-            } else {
-                this.log("Auto-roll disabled, Will save must be rolled manually");
             }
             
         } catch (error) {
             console.error("Error processing Dread Rune effect:", error);
-            this.log("Error processing Dread Rune effect", error);
         }
     }
 
+
+
     /**
-     * Force a Will save for the affected actor
+     * Handle the consequences of a failed Will save against Dread Rune
      */
-    async forceWillSave(actor) {
-        this.log(`Forcing Will save for ${actor.name} with DC ${this.DREAD_RUNE_DC}`);
+    async handleFailedWillSave(actor, dreadRuneActor, runeData) {
+        this.log(`Handling failed Will save for ${actor.name} against ${dreadRuneActor.name}'s ${runeData.name}`);
         
         try {
-            // Create a Will save check
-            const willSave = new game.pf2e.Check({
-                actor: actor,
-                type: "saving-throw",
-                skill: "will",
-                dc: { value: this.DREAD_RUNE_DC },
-                options: ["dread-rune", "property-rune"]
-            });
-
-            // Roll the save
-            await willSave.roll();
-            this.log(`Will save rolled for ${actor.name}, result: ${willSave.degreeOfSuccess}`);
-            
-            // Check the result and apply the effect
-            if (willSave.degreeOfSuccess === "failure" || willSave.degreeOfSuccess === "criticalFailure") {
-                this.log(`${actor.name} failed the Will save, applying Dread Rune failure effect`);
-                await this.applyDreadRuneFailure(actor);
-            } else {
-                this.log(`${actor.name} succeeded on the Will save, no effect applied`);
+            // Find the frightened condition
+            const frightenedCondition = this.findFrightenedCondition(actor);
+            if (!frightenedCondition) {
+                this.log(`${actor.name} no longer has frightened condition`);
+                return;
             }
             
-        } catch (error) {
-            console.error("Error forcing Will save:", error);
-            this.log("Error forcing Will save", error);
-        }
-    }
-
-    /**
-     * Apply the Dread Rune failure effect
-     */
-    async applyDreadRuneFailure(actor) {
-        this.log(`Applying Dread Rune failure effect to ${actor.name}`);
-        
-        try {
-            // Find the frightened effect
-            const frightenedEffect = actor.itemTypes.effect.find(effect => 
-                effect.slug === "frightened"
-            );
+            const currentValue = frightenedCondition.value;
+            this.log(`${actor.name} current frightened value: ${currentValue}`);
             
-            if (frightenedEffect) {
-                // Get current frightened value
-                const currentValue = frightenedEffect.system.value.value;
-                this.log(`${actor.name} current frightened value: ${currentValue}`);
+            // Check if the rune prevents decrease below minimum
+            const minFrightened = runeData.minFrightened;
+            if (minFrightened !== null && currentValue > minFrightened) {
+                this.log(`Creating temporary effect to prevent frightened decrease below ${minFrightened}`);
                 
-                // If it would decrease below 1, prevent it
-                if (currentValue > 1) {
-                    this.log(`Creating temporary effect to prevent frightened decrease below 1`);
-                    
-                    // Create a temporary effect to prevent the decrease
-                    const preventDecreaseEffect = {
-                        id: "dread-rune-prevent-decrease",
-                        name: "Dread Rune - Prevent Frightened Decrease",
-                        description: "The Dread Rune prevents your frightened condition from decreasing below 1 this turn.",
-                        img: "icons/magic/symbols/runes-star-4-pentagon.webp",
-                        system: {
-                            rules: [],
-                            tokenIcon: {
-                                show: false
-                            },
-                            level: {
-                                value: 1
-                            },
-                            duration: {
-                                value: 1,
-                                unit: "rounds"
-                            }
+                // Create a temporary effect to prevent the decrease
+                const preventDecreaseEffect = {
+                    id: "dread-rune-prevent-decrease",
+                    name: `${runeData.name} - Prevent Frightened Decrease`,
+                    description: `The ${runeData.name} prevents your frightened condition from decreasing below ${minFrightened} this turn.`,
+                    img: "systems/pf2e/icons/equipment/runes/armor-property-runes/armor-property-runes.webp",
+                    system: {
+                        rules: [],
+                        tokenIcon: {
+                            show: false
+                        },
+                        level: {
+                            value: 1
+                        },
+                        duration: {
+                            value: 1,
+                            unit: "rounds"
                         }
-                    };
-                    
-                    // Apply the effect
-                    await actor.createEmbeddedDocuments("Item", [preventDecreaseEffect]);
-                    this.log("Prevent decrease effect applied successfully");
-                    
-                    // Send a chat message about the effect if enabled
-                    if (game.settings.get("pf2e-property-runes", "show-chat-messages")) {
-                        await ChatMessage.create({
-                            user: game.user.id,
-                            speaker: ChatMessage.getSpeaker({ actor }),
-                            content: `<div class="dread-rune-effect">
-                                <div class="dread-rune-header">
-                                    <img src="icons/magic/symbols/runes-star-4-pentagon.webp" width="20" height="20">
-                                    <strong>${this.DREAD_RUNE_NAME} Effect</strong>
-                                </div>
-                                <p><strong>${actor.name}</strong> failed the Will save! Their frightened condition cannot decrease below 1 this turn.</p>
-                            </div>`,
-                            type: CONST.CHAT_MESSAGE_TYPES.OTHER
-                        });
                     }
-                } else {
-                    this.log(`${actor.name} frightened value is already 1 or less, no effect needed`);
+                };
+                
+                // Apply the effect
+                await actor.createEmbeddedDocuments("Item", [preventDecreaseEffect]);
+                this.log("Prevent decrease effect applied successfully");
+                
+                // Send a chat message about the effect if enabled
+                if (game.settings.get("pf2e-property-runes", "show-chat-messages")) {
+                    await ChatMessage.create({
+                        user: game.user.id,
+                        // No speaker - this ensures the DC is not affected by any actor's conditions
+                        content: `<div class="dread-rune-effect">
+                            <div class="dread-rune-header">
+                                <img src="systems/pf2e/icons/equipment/runes/armor-property-runes/armor-property-runes.webp" width="20" height="20">
+                                <strong>${runeData.name} Effect</strong>
+                            </div>
+                            <p><strong>${actor.name}</strong> failed the Will save against the highest DC! Their frightened condition cannot decrease below ${minFrightened} this turn due to ${runeData.name}.</p>
+                        </div>`,
+                        style: CONST.CHAT_MESSAGE_STYLES.OTHER
+                    });
+                }
+            } else if (minFrightened === null) {
+                this.log(`${actor.name} has ${runeData.name} which prevents any frightened decrease`);
+                
+                // Send a chat message about the effect if enabled
+                if (game.settings.get("pf2e-property-runes", "show-chat-messages")) {
+                    await ChatMessage.create({
+                        user: game.user.id,
+                        // No speaker - this ensures the DC is not affected by any actor's conditions
+                        content: `<div class="dread-rune-effect">
+                            <div class="dread-rune-header">
+                                <img src="systems/pf2e/icons/equipment/runes/armor-property-runes/armor-property-runes.webp" width="20" height="20">
+                                <strong>${runeData.name} Effect</strong>
+                            </div>
+                            <p><strong>${actor.name}</strong> failed the Will save against the highest DC! Their frightened condition cannot decrease at all this turn due to ${runeData.name}.</p>
+                        </div>`,
+                        style: CONST.CHAT_MESSAGE_STYLES.OTHER
+                    });
                 }
             } else {
-                this.log(`${actor.name} no longer has frightened effect`);
+                this.log(`${actor.name} frightened value is already at or below minimum (${minFrightened}), no effect needed`);
             }
             
         } catch (error) {
-            console.error("Error applying Dread Rune failure effect:", error);
-            this.log("Error applying Dread Rune failure effect", error);
+            console.error("Error handling failed Will save:", error);
+            this.log("Error handling failed Will save", error);
         }
+    }
+
+    /**
+     * Get all Dread Rune actors affecting the given frightened actor
+     * Returns an array of all actors with Dread Rune armor within range
+     */
+    getAllDreadRuneActorsAffecting(frightenedActor) {
+        const scene = game.scenes.active;
+        if (!scene) {
+            return [];
+        }
+
+        // Get all actors with Dread Rune armor in the scene
+        const dreadRuneActors = this.getDreadRuneActors(scene);
+        const affectingActors = [];
+        
+        for (const dreadRuneActor of dreadRuneActors) {
+            const distance = this.getDistanceBetween(frightenedActor, dreadRuneActor);
+            
+            // Get the specific rune data for this actor's armor to check range
+            const runeData = this.getDreadRuneData(dreadRuneActor);
+            if (!runeData) {
+                continue;
+            }
+            
+            if (distance <= runeData.range) {
+                affectingActors.push(dreadRuneActor);
+            }
+        }
+        
+        return affectingActors;
+    }
+
+    /**
+     * Get the Dread Rune actor who is affecting the given frightened actor
+     * Returns the actor with the highest DC rune within range
+     */
+    getDreadRuneActorAffecting(frightenedActor) {
+        const scene = game.scenes.active;
+        if (!scene) {
+            return null;
+        }
+
+        // Get all actors with Dread Rune armor in the scene
+        const dreadRuneActors = this.getDreadRuneActors(scene);
+        this.log(`Found ${dreadRuneActors.length} actors with Dread Rune armor`);
+        
+        if (dreadRuneActors.length === 0) {
+            return null;
+        }
+        
+        // Find the Dread Rune actor with the highest DC within range
+        let highestDCActor = null;
+        let highestDC = -1;
+        
+        for (const dreadRuneActor of dreadRuneActors) {
+            const distance = this.getDistanceBetween(frightenedActor, dreadRuneActor);
+            this.log(`Distance to ${dreadRuneActor.name}: ${distance.toFixed(1)} feet`);
+            
+            // Get the specific rune data for this actor's armor to check range
+            const runeData = this.getDreadRuneData(dreadRuneActor);
+            if (!runeData) {
+                this.log(`Could not determine rune data for ${dreadRuneActor.name}, skipping`);
+                continue;
+            }
+            
+            if (distance <= runeData.range) {
+                this.log(`✅ ${dreadRuneActor.name} is within range (${distance.toFixed(1)} feet <= ${runeData.range} feet) with DC ${runeData.dc}`);
+                
+                // Check if this actor has a higher DC than what we've seen so far
+                if (runeData.dc > highestDC) {
+                    highestDC = runeData.dc;
+                    highestDCActor = dreadRuneActor;
+                    this.log(`🎯 New highest DC: ${dreadRuneActor.name} with DC ${runeData.dc}`);
+                }
+            } else {
+                this.log(`❌ ${dreadRuneActor.name} is out of range (${distance.toFixed(1)} feet > ${runeData.range} feet)`);
+            }
+        }
+        
+        if (highestDCActor) {
+            this.log(`Highest DC Dread Rune actor affecting ${frightenedActor.name}: ${highestDCActor.name} with DC ${highestDC}`);
+        } else {
+            this.log(`No Dread Rune actor within range of ${frightenedActor.name}`);
+        }
+        
+        return highestDCActor;
+    }
+
+    /**
+     * Get the Dread Rune data for a specific actor's armor
+     */
+    getDreadRuneData(actor) {
+        // Check equipped armor for Dread Rune
+        const equippedArmor = actor.itemTypes.armor.find(armor => 
+            armor.isEquipped
+        );
+        
+        if (!equippedArmor) {
+            return null;
+        }
+        
+        // Check for property runes
+        if (equippedArmor.system.runes?.property) {
+            for (const rune of equippedArmor.system.runes.property) {
+                // Handle both string and object rune formats
+                let runeName = '';
+                if (typeof rune === 'string') {
+                    runeName = rune;
+                } else if (rune && typeof rune === 'object') {
+                    runeName = rune.name || rune.slug || '';
+                }
+                
+                if (runeName.toLowerCase().includes('dread')) {
+                    // Determine the rune type from the name
+                    let runeType = 'lesser'; // default
+                    if (runeName.toLowerCase().includes('greater')) {
+                        runeType = 'greater';
+                    } else if (runeName.toLowerCase().includes('moderate')) {
+                        runeType = 'moderate';
+                    }
+                    
+                    const runeData = this.DREAD_RUNE_TYPES[runeType];
+                    return runeData;
+                }
+            }
+        }
+        
+        return null;
     }
 
     /**
      * Check for Dread Rune equipment when actors are updated
      */
     checkDreadRuneEquipment(actor) {
-        this.log(`Checking Dread Rune equipment for ${actor.name}`);
-        
-        if (this.hasDreadRuneArmor(actor)) {
-            this.log(`${actor.name} has Dread Rune armor equipped`);
-        } else {
-            this.log(`${actor.name} does not have Dread Rune armor equipped`);
-        }
+        // Method for future use
     }
+
+    /**
+     * Debug method to inspect an actor's frightened condition
+     */
+    debugFrightenedCondition(actor) {
+        this.log(`=== DEBUGGING FRIGHTENED CONDITION FOR ${actor.name} ===`);
+        
+        // Test the findFrightenedCondition method
+        const foundCondition = this.findFrightenedCondition(actor);
+        if (foundCondition) {
+            this.log(`✅ Found frightened condition:`, foundCondition);
+        } else {
+            this.log(`❌ No frightened condition found`);
+        }
+        
+        this.log(`=== END DEBUG ===`);
+    }
+
+
 }
 
 // Initialize the module when FoundryVTT is ready
 Hooks.on("ready", () => {
-    console.log("PF2E Property Runes: ready hook fired, creating DreadRuneAutomation instance");
     new DreadRuneAutomation();
 });

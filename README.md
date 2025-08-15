@@ -39,12 +39,15 @@ The Dread Rune creates eerie symbols on armor that inspire terror in foes. When 
 
 1. **Detection**: The module automatically detects if the enemy is within range of Dread Rune armor
 2. **Trigger**: At the end of their turn, the Dread Rune effect is automatically triggered
-3. **Will Save**: The enemy must attempt a DC 20 Will save
-4. **Effect Application**: On a failure, their frightened condition cannot decrease below 1 that turn
+3. **Will Save**: The enemy must attempt a Will save against the **highest DC** among all available Dread Runes
+4. **Effect Application**: On a failure, their frightened condition cannot decrease below the minimum for the rune type
+
+**Important**: When multiple characters with Dread Rune armor are within range, the frightened creature saves against the **highest DC** available. Only one save is triggered per frightened creature per turn, but it uses the most challenging DC.
 
 ### Technical Implementation
 - **Hooks Integration**: Uses FoundryVTT's hook system to monitor turn changes and combat updates
 - **Distance Calculation**: Calculates precise distances between tokens using grid-based measurements
+- **Highest DC Detection**: Automatically identifies and uses the highest DC among all available Dread Runes
 - **Effect Management**: Automatically creates and applies temporary effects to prevent frightened decreases
 - **Chat Integration**: Sends formatted chat messages for all Dread Rune interactions
 
@@ -63,10 +66,10 @@ The Dread Rune creates eerie symbols on armor that inspire terror in foes. When 
 ### Configuration
 The module includes several configurable options:
 - **Enable/Disable**: Toggle Dread Rune automation on/off
-- **Save DC**: Adjust the Will save difficulty (default: 20)
-- **Range**: Modify the effect range in feet (default: 30)
 - **Chat Messages**: Control whether chat messages are displayed
-- **Auto-roll Saves**: Choose whether saves are rolled automatically
+- **Debug Mode**: Enable detailed console logging for troubleshooting
+
+**Note**: Save DCs are automatically determined by the specific Dread Rune type (Lesser: DC 20, Moderate: DC 29, Greater: DC 38) and the system automatically uses the highest DC when multiple runes are in range.
 
 ## File Structure
 
@@ -125,6 +128,18 @@ The module calculates distances using:
 ### Debug Information
 Enable debug mode in the module settings to see detailed logging information in the browser console.
 
+#### Debug Functions
+The module provides several debug functions available in the browser console:
+
+- **`debugDreadRuneHighestDC(actorId)`**: Test the highest DC detection logic for a specific actor
+- **`debugDreadRuneFrightened(actorId)`**: Debug frightened condition detection
+- **`debugDreadRuneAllyCheck(actorId)`**: Debug ally/enemy detection
+- **`debugDreadRuneAlliance(actorId1, actorId2)`**: Debug alliance between two actors
+- **`debugDreadRuneRequirements(actorId)`**: Debug frightened level requirements
+- **`debugActorWillSave(actorId)`**: Debug actor's Will save data structure
+
+These functions help troubleshoot issues and verify that the highest DC logic is working correctly.
+
 ## Future Development
 
 This module is designed to be expandable. Future versions may include:
@@ -155,6 +170,13 @@ For support and questions:
 - Open an issue on the GitHub repository
 
 ## Changelog
+
+### Version 1.1.0
+- **Highest DC Functionality**: Multiple Dread Runes now use the highest DC available
+- **Single Save Trigger**: Only one save is triggered per frightened creature per turn
+- **Enhanced Detection**: Better detection of multiple Dread Rune actors in range
+- **Improved Debugging**: Added debug functions for testing highest DC logic
+- **Updated Documentation**: Comprehensive documentation of new functionality
 
 ### Version 1.0.0
 - Initial release
